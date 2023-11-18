@@ -1,0 +1,198 @@
+======================================================
+CREATING APPLICATIONSETS USING PULL REQUEST GENERATOR
+========================================================
+
+Pull Request generator:
+    - uses the API of an SCMaaS provider (eg GitHub/GitLab) to automatically discover open pull requests within an repository
+    
+"Generators are responsible for generating parameters, which are then rendered into the template: fields of the ApplicationSet resource."
+
+
+Specify the repository from which to fetch the Github Pull requests
+----------------------------------------------------------------------
+Example:
+-------
+generators:
+  - pullRequest:
+      github:
+        # The GitHub organization or user.
+        owner: myorg
+        # The Github repository
+        repo: myrepo
+        # For GitHub Enterprise. (optional)
+        api: https://git.example.com/
+        # Reference to a Secret containing an access token. (optional)
+        tokenRef:
+          secretName: github-token
+          key: token
+        # Labels is used to filter the PRs that you want to target. (optional)
+        labels:
+        - preview
+------
+
+
+Template
+-----------
+Example:
+-----
+template:
+  metadata:
+    name: 'myapp-{{branch}}-{{number}}'
+  spec:
+    source:
+      repoURL: 'https://github.com/myorg/myrepo.git'
+      targetRevision: '{{head_sha}}'
+      path: kubernetes/
+    helm:
+      parameters:
+        - name: "image.tag"
+          value: "pull-{{head_sha}}"
+    project: default
+    destination:
+      server: 'https://kubernetes.default.svc'
+      namespace: default
+
+-----
+
+The following keys are available for replacement in the generated application.
+- number: The ID number of the pull request.
+- branch: The name of the branch of the pull request head.
+- branch_slug: The branch name will be cleaned to be conform to the DNS label standard as defined in RFC 1123, and truncated to 50 characters to give room to append/suffix-ing it with 13 more characters.
+- target_branch: The name of the target branch of the pull request.
+- target_branch_slug: The target branch name will be cleaned to be conform to the DNS label standard as defined in RFC 1123, and truncated to 50 characters to give room to append/suffix-ing it with 13 more characters.
+- head_sha: This is the SHA of the head of the pull request.
+- head_short_sha: This is the short SHA of the head of the pull request (8 characters long or the length of the head SHA if it's shorter).
+- head_short_sha_7: This is the short SHA of the head of the pull request (7 characters long or the length of the head SHA if it's shorter).
+- labels: The array of pull request labels. (Supported only for Go Template ApplicationSet manifests.)
+
+
+EXAMPLES
+------------
+EXCELLENT REAL-WORLD EXAMPLE: https://dev.to/camptocamp-ops/using-argocd-pull-request-generator-to-review-application-modifications-236e
+
+
+FULL, SIMPLE, EXAMPLE: 
+
+[1] Create a K8s secret to store the Github token
+>> source ~/.my_tokens
+sets GITHUB_TOKEN env var
+
+>> k create -n argocd secret generic github-token --from-literal=token=${GITHUB_TOKEN}
+
+
+[2] First, deploy a test application using ArgoCD Application:
+
+>> k create -n argocd -f test-application.yaml
+
+test-application.yaml
+======
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: webapp-review
+  namespace: argocd
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: argocd
+  project: default
+  source:
+    repoURL: 'https://github.com/vjkancherla/Example-K8s-Applications.git'
+    path: a-webapp/helm/webapp
+    targetRevision: HEAD
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+======
+
+
+[3] Create the PR ApplicationSet
+
+>> k create -n argocd -f pr-generator-appset.yaml
+
+pr-generator-appset.yaml
+====
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: webapp-review
+  namespace: argocd
+spec:
+  generators:
+  - pullRequest:
+      github:
+        # The GitHub organization or user.
+        owner: vjkancherla
+        
+        # The Github repository
+        repo: Example-K8s-Applications
+       
+        # Reference to a Secret containing an access token. (optional)
+        tokenRef:
+          secretName: github-token
+          key: token
+        
+        # Labels is used to filter the PRs that you want to target. (optional)
+        labels:
+          - preview
+
+      #polls every requeueAfterSeconds interval (defaulting to every 30 minutes) to detect changes
+      requeueAfterSeconds: 90
+  template:
+    metadata:
+      name: 'webapp-{{branch}}-{{head_short_sha}}-pr{{number}}'
+      namespace: argocd
+    spec:
+      source:
+        repoURL: 'https://github.com/vjkancherla/Example-K8s-Applications.git'
+        targetRevision: '{{head_sha}}'
+        path: a-webapp/helm/webapp
+      project: "default"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: webapp-{{branch}}-{{head_short_sha}}-pr{{number}}
+      syncPolicy:
+        automated: {}
+        syncOptions:
+          - ServerSideApply=true
+          - CreateNamespace=true
+====
+
+[4] Create a Github PR
+>> git clone https://github.com/vjkancherla/Example-K8s-Applications.git
+
+>> cd Example-K8s-Applications
+
+>> git checkout -b feature-x 
+
+- Update a-webapp/helm/webapp/values.yaml and set 
+image.tag: "0749f902c21ddbea8352c4aa5505b19b0cd86688"
+
+>> git add . && git commit -m "`date`"
+
+- Go to GitHub, navigate to Example-K8s-Application repo and create a new Pull-Request for "feature-x" branch.
+  **And add a lable called "preview" to the PR.** The above AppSet only looks for PRs with label "preview".
+
+
+[5] After 90 secs (requeueAfterSeconds), ArgoCD ApplicationSet controller will poll Github and will look for new PRs with label "preview".
+    If it finds one, it will create a new Application in ArgoCD for that PR.
+
+    >> k get applications.argoproj.io -n argocd
+    NAME                            SYNC STATUS   HEALTH STATUS
+    webapp-review                   Synced        Healthy
+    webapp-feature-x-aa052f7a-pr1   OutOfSync     Missing    
+
+    >> k -n argocd get applications.argoproj.io/webapp-feature-x-aa052f7a-pr1 -o yaml
+
+    Open ArgoCD console and view the newly created Application.
+
+
+
+
+
