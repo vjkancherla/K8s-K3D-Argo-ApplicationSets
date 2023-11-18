@@ -1,0 +1,84 @@
+======================================================
+CREATING APPLICATIONSETS USING GIT GENERATOR
+========================================================
+
+"Generators are responsible for generating parameters, which are then rendered into the template: fields of the ApplicationSet resource."
+
+The Git generator contains two subtypes: the Git directory generator, and Git file generator.
+
+=========================
+GIT DIRECTORY GENERATOR
+==========================
+- The Git directory generator generates parameters using the directory structure of a specified Git repository.
+
+- Suppose you have a Git repository with the following directory structure:
+===
+https://github.com/argoproj/argo-cdpplicationset/examples/git-generator-directory/cluster-addons
+├── frontend-app
+    ├── Chart.yaml
+    ├── README.md
+    ├── requirements.yaml
+    └── values.yaml
+└── backend-app
+    ├── Chart.yaml
+    ├── README.md
+    ├── requirements.yaml
+    └── values.yaml
+===
+
+We can deploy both workloads, using this example:
+====
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cluster-addons
+  namespace: argocd
+spec:
+  generators:
+  - git:
+      repoURL: https://github.com/argoproj/argo-cd.git
+      revision: HEAD
+      directories:
+      - path: applicationset/examples/git-generator-directory/cluster-addons/*
+  template:
+    metadata:
+      name: '{{path.basename}}'
+    spec:
+      project: "my-project"
+      source:
+        repoURL: https://github.com/argoproj/argo-cd.git
+        targetRevision: HEAD
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{path.basename}}'
+      syncPolicy:
+        syncOptions:
+        - CreateNamespace=true
+====
+
+The generator parameters are:
+
+{{path}}: The directory paths within the Git repository that match the path wildcard.
+{{path[n]}}: The directory paths within the Git repository that match the path wildcard, split into array elements (n - array index)
+{{path.basename}}: For any directory path within the Git repository that matches the path wildcard, the right-most path name is extracted (e.g. /directory/directory2 would produce directory2).
+{{path.basenameNormalized}}: This field is the same as path.basename with unsupported characters replaced with - (e.g. a path of /directory/directory_2, and path.basename of directory_2 would produce directory-2 here).
+
+Note: The right-most path name always becomes {{.path.basename}}. For example, for - path: /one/two/three/four, {{.path.basename}} is four.
+
+- Exclude directories
+    - The Git directory generator will automatically exclude directories that begin with . (such as .git).
+
+    - The Git directory generator also supports an exclude option in order to exclude directories in the repository from 
+      being scanned by the ApplicationSet controller
+      Example: https://github.com/argoproj/argo-cd/tree/master/applicationset/examples/git-generator-directory/excludes
+
+
+- Deploy from Root Of Git Repo
+    - The Git directory generator can be configured to deploy from the root of the git repository by providing '*' as the path.
+
+
+- Pass additional key-value pairs via values field
+    - You may pass additional, arbitrary string key-value pairs via the values field of the git directory generator
+
+

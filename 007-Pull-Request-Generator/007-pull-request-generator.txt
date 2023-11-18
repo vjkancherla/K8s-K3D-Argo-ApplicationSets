@@ -192,6 +192,7 @@ image.tag: "0749f902c21ddbea8352c4aa5505b19b0cd86688"
 
     Open ArgoCD console and view the newly created Application.
 
+[6] Closing the PR (after Merge or cancel) will make  ArgoCD ApplicationSet controller to delete the Application.
 
 
 
