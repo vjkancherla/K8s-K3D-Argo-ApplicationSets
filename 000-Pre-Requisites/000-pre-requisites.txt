@@ -1,0 +1,23 @@
+=====================
+Pre-Requisites
+======================
+
+- Run a K3d cluster
+>> k3d cluster create mycluster --agents 1
+
+
+- Deploy slimed-down version ArgoCD to K3d
+>> helm upgrade --install my-argo-cd argo/argo-cd \
+-n argocd --create-namespace \
+-f helm-argocd-values.yaml
+
+
+- Get ArgoCD login pwd
+>> kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+
+
+- Create a Port-Forward to access ArgoCD console
+>> k port-forward -n argocd svc/my-argo-cd-argocd-server 8080:80 &
+
+
+- Access the ArgoCD console at http://localhost:8080

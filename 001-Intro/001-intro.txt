@@ -1,0 +1,36 @@
+==========================
+ARGO APPLICATIONSETS
+==========================
+- Automates the generation of Argo CD Applications with the ApplicationSet Controller
+- The ApplicationSet controller is a part of Argo CD 
+- ApplicationSets allows users to define a template for creating Argo CD Applications and 
+  then dynamically instantiate these templates based on various parameters.
+
+
+GENERATORS
+-----------
+- "Generators" in ApplicationSets dynamically create Argo CD Applications based on the criteria defined within them.
+
+There are currently 8 types of generators in ArgoCD:
+- List generator:
+     Specifies a list of values (like cluster names, URLs, etc.) to create multiple applications.
+
+- Cluster generator:
+    Dynamically generates applications for every cluster registered in Argo CD, or those that match specified labels.
+
+- Git generator:
+    Uses a directory, file, or structured data in a Git repository to generate applications.
+
+- Matrix generator
+    Combines two or more generators to create a Cartesian product of their outputs, enabling complex deployment scenarios.
+
+- Merge generator:
+    combines parameters produced by the base (first) generator with matching parameter sets produced by subsequent generators.
+
+- SCM Provider generator:
+    Connects to SCM providers like GitHub, GitLab, or Bitbucket to create applications based on repository events.
+
+- Pull Request generator
+    Sses the API of an SCMaaS provider (eg GitHub/GitLab) to automatically discover open pull requests within an repository.
+
+- Cluster Decision Resource generator

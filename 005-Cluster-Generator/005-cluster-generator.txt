@@ -1,0 +1,95 @@
+================================================
+CREATING APPLICATIONSETS USING CLUSTER GENERATOR
+================================================
+
+Cluster generator:
+    - Dynamically generates applications for every cluster registered in Argo CD, or those that match specified labels.
+    - The Cluster generator allows you to target Argo CD Applications to clusters, based on the list of clusters defined 
+      within (and managed by) Argo CD (which includes automatically responding to cluster addition/removal events from Argo CD).
+
+"Generators are responsible for generating parameters, which are then rendered into the template: fields of the ApplicationSet resource."
+
+
+How does ArgoCD know when a new cluster is added to it?
+--------------------------------------------------------
+- In Argo CD, managed clusters (i.e., clusters added to ArgoCD) are stored within Secrets in the Argo CD namespace.
+- The ApplicationSet controller uses those same Secrets to generate parameters to identify and target available clusters.
+
+For each cluster registered with Argo CD, the Cluster generator produces parameters based on the list of items found within the cluster secret.
+
+It automatically provides the following parameter values to the Application template for each cluster:
+- name
+- nameNormalized ('name' but normalized to contain only lowercase alphanumeric characters, '-' or '.')
+- server
+- metadata.labels.<key> (for each label in the Secret)
+- metadata.annotations.<key> (for each annotation in the Secret)
+
+
+EXAMPLE: 
+Source: https://github.com/argoproj/argo-cd/blob/master/applicationset/examples/cluster/cluster-example-fasttemplate.yaml
+-----
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: guestbook
+spec:
+  generators:
+  - clusters: {}
+  template:
+    metadata:
+      name: '{{name}}-guestbook'
+    spec:
+      project: "default"
+      source:
+        repoURL: https://github.com/argoproj/argocd-example-apps/
+        targetRevision: 53e28ff
+        path: guestbook
+      destination:
+        server: '{{server}}'
+        namespace: guestbook
+      syncPolicy:
+        automated: {}
+        syncOptions:
+          - ServerSideApply=true
+          - CreateNamespace=true
+-----
+
+The cluster generator in the above example iterates through all the clusters registerd with ArgoCD, and for each cluster:
+    - creates the following variables
+        - name
+        - nameNormalized ('name' but normalized to contain only lowercase alphanumeric characters, '-' or '.')
+        - server
+        - metadata.labels.<key> (for each label in the Secret)
+        - metadata.annotations.<key> (for each annotation in the Secret)
+    - then, the template section is used to create an Application, with the vars being substituted for their values
+
+Currently, only the "local" cluster (the clsuter on which ArgoCD is running) is registerd with ArgoCD.
+So, in the above example, a single Application is created with variable server="in-cluster"
+
+
+=============================================
+Using ArgoCD CLI to list registered Clusters
+=============================================
+- Install ArgoCD CLI
+
+- Grab ArgoCD login password:
+>> kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+
+- Create a Port-Forward to access ArgoCD console
+>> k port-forward -n argocd svc/my-argo-cd-argocd-server 8080:80 &
+
+- Login using ArgoCD CLI
+>> argocd login localhost:8080  --username admin --password 4kn1z8nUtpRchksT
+
+- List all registered clusters
+>> argocd cluster list
+
+
+=============================================
+Using ArgoCD CLI to register a New Cluster
+=============================================
+- Login using ArgoCD CLI
+>> argocd login localhost:8080  --username admin --password 4kn1z8nUtpRchksT
+
+- Register a new cluster called "vcluster_my-vcluster_vcluster-my-vcluster_k3d-mycluster" using the cluster's kubeconfig gile
+>> argocd cluster add vcluster_my-vcluster_vcluster-my-vcluster_k3d-mycluster --kubeconfig ./kubeconfig.yaml -y --upsert
